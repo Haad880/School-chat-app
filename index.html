@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chat with Telegram</title>
+  <title>Chat with Admin</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -46,6 +46,12 @@
       border-left: 4px solid #2ecc71;
       border-radius: 6px;
       position: relative;
+      word-wrap: break-word;
+    }
+    .message img {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 8px;
     }
     .message .time {
       font-size: 12px;
@@ -86,11 +92,22 @@
       messages.forEach((msg, index) => {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message';
-        msgDiv.innerHTML = `
-          ${msg.text}
-          <div class="time">${msg.time}</div>
-          <button class="delete-btn" onclick="deleteMessage(${index})">Delete</button>
-        `;
+
+        if (msg.imageUrl) {
+          msgDiv.innerHTML = `
+            ${msg.text || ''}
+            <img src="${msg.imageUrl}" />
+            <div class="time">${msg.time}</div>
+            <button class="delete-btn" onclick="deleteMessage(${index})">Delete</button>
+          `;
+        } else {
+          msgDiv.innerHTML = `
+            ${msg.text}
+            <div class="time">${msg.time}</div>
+            <button class="delete-btn" onclick="deleteMessage(${index})">Delete</button>
+          `;
+        }
+
         messagesDiv.appendChild(msgDiv);
       });
     }
@@ -128,27 +145,40 @@
         const data = await response.json();
         const updates = data.result;
 
-        updates.forEach(update => {
-          if (
-            update.message &&
-            update.message.from.id == telegramID &&
-            update.message.text
-          ) {
-            const msgText = update.message.text;
-            const msgTime = formatTime(update.message.date * 1000);
-            const exists = messages.some(msg => msg.text === msgText && msg.time === msgTime);
-            if (!exists) {
-              messages.push({ text: msgText, time: msgTime });
-              localStorage.setItem('telegram_messages', JSON.stringify(messages));
-              displayMessages();
-            }
-          }
-
+        for (const update of updates) {
           if (update.update_id) {
             lastUpdateId = update.update_id;
             localStorage.setItem('last_update_id', lastUpdateId);
           }
-        });
+
+          if (!update.message) continue;
+          const message = update.message;
+
+          if (message.from.id == telegramID) {
+            const msgTime = formatTime(message.date * 1000);
+
+            if (message.photo) {
+              const fileId = message.photo[message.photo.length - 1].file_id;
+              const fileResponse = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+              const fileData = await fileResponse.json();
+              const fileUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+
+              const exists = messages.some(m => m.imageUrl === fileUrl && m.time === msgTime);
+              if (!exists) {
+                messages.push({ text: message.caption || '', imageUrl: fileUrl, time: msgTime });
+              }
+            } else if (message.text) {
+              const msgText = message.text;
+              const exists = messages.some(m => m.text === msgText && m.time === msgTime);
+              if (!exists) {
+                messages.push({ text: msgText, time: msgTime });
+              }
+            }
+          }
+        }
+
+        localStorage.setItem('telegram_messages', JSON.stringify(messages));
+        displayMessages();
       } catch (err) {
         console.error("Fetch error:", err);
       }
@@ -156,7 +186,7 @@
 
     displayMessages();
     fetchReplies();
-    setInterval(fetchReplies, 5000); // Check for replies every 5 seconds
+    setInterval(fetchReplies, 5000); // Poll Telegram every 5 seconds
   </script>
 </body>
 </html>
