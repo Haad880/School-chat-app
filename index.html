@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat with Telegram</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 50px auto;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    #commentInput {
+      width: 80%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    #sendBtn {
+      padding: 10px 16px;
+      font-size: 16px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .message {
+      padding: 10px;
+      margin: 10px 0;
+      background: #e9f7ef;
+      border-left: 4px solid #2ecc71;
+      border-radius: 6px;
+      position: relative;
+    }
+    .message .time {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+    .delete-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Chat with Admin</h2>
+    <input type="text" id="commentInput" placeholder="Write your comment..." />
+    <button id="sendBtn">Send</button>
+    <div id="messages"></div>
+  </div>
+
+  <script>
+    const botToken = "8391264467:AAFf7dWhIipELqbq4FN6lJjDPP5DIfQNgZA";
+    const telegramID = "6103128037";
+
+    let messages = JSON.parse(localStorage.getItem('telegram_messages')) || [];
+    let lastUpdateId = parseInt(localStorage.getItem('last_update_id')) || 0;
+
+    function displayMessages() {
+      const messagesDiv = document.getElementById('messages');
+      messagesDiv.innerHTML = '';
+      messages.forEach((msg, index) => {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        msgDiv.innerHTML = `
+          ${msg.text}
+          <div class="time">${msg.time}</div>
+          <button class="delete-btn" onclick="deleteMessage(${index})">Delete</button>
+        `;
+        messagesDiv.appendChild(msgDiv);
+      });
+    }
+
+    function deleteMessage(index) {
+      messages.splice(index, 1);
+      localStorage.setItem('telegram_messages', JSON.stringify(messages));
+      displayMessages();
+    }
+
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    }
+
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const comment = document.getElementById('commentInput').value;
+      if (!comment) return alert("Please enter a message");
+
+      // Send message to Telegram
+      fetch(`https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${telegramID}&text=${encodeURIComponent(comment)}`)
+        .then(() => {
+          alert("Message sent to admin!");
+          document.getElementById('commentInput').value = '';
+        })
+        .catch(err => {
+          console.error("Error:", err);
+          alert("Failed to send message.");
+        });
+    });
+
+    async function fetchReplies() {
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?offset=${lastUpdateId + 1}`);
+        const data = await response.json();
+        const updates = data.result;
+
+        updates.forEach(update => {
+          if (
+            update.message &&
+            update.message.from.id == telegramID &&
+            update.message.text
+          ) {
+            const msgText = update.message.text;
+            const msgTime = formatTime(update.message.date * 1000);
+            const exists = messages.some(msg => msg.text === msgText && msg.time === msgTime);
+            if (!exists) {
+              messages.push({ text: msgText, time: msgTime });
+              localStorage.setItem('telegram_messages', JSON.stringify(messages));
+              displayMessages();
+            }
+          }
+
+          if (update.update_id) {
+            lastUpdateId = update.update_id;
+            localStorage.setItem('last_update_id', lastUpdateId);
+          }
+        });
+      } catch (err) {
+        console.error("Fetch error:", err);
+      }
+    }
+
+    displayMessages();
+    fetchReplies();
+    setInterval(fetchReplies, 5000); // Check for replies every 5 seconds
+  </script>
+</body>
+</html>
